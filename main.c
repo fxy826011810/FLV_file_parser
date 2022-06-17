@@ -1,4 +1,6 @@
 #include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
 #include "flv.h"
 
 #define FLV_FILE "D:\\\\flv\\461480359_nb2-1-120.flv"
@@ -50,26 +52,46 @@ int main() {
             return -5;
         }
         uint32 data_size = tag_header.DataSize;
+        unsigned char *ptag_data = malloc((data_size+4)/4*4);
+        if(ptag_data == NULL)
+        {
+            fseek(pflv, data_size, SEEK_CUR);
+            goto next;
+        }
+
+        read_len = fread(ptag_data,1,data_size,pflv);
+        if(read_len != data_size)
+        {
+            goto next;
+        }
         if(tag_header.TagType == TagAudio)
         {
-            unsigned char audio_header_buf[1]={0};
             _audio_tag_header audio_tag_header={0};
-            read_len = fread(audio_header_buf,1,1,pflv);
-            data_size -= read_len;
-            if(audio_header_get(audio_header_buf,&audio_tag_header) == 0)
+            if(audio_header_get(ptag_data,&audio_tag_header) == 0)
             {
-
+                audio_type_parse(&ptag_data[1],audio_tag_header.SoundFormat);
             }
         }
         else if(tag_header.TagType == TagVideo)
         {
-
+            _video_tag_header video_header={0};
+            video_header_get(ptag_data,&video_header);
+            if(video_header.CodecID == VIDEO_CODEC_AVC)
+            {
+                _avc_video_packet_t avc_video_header={0};
+                video_avc_header_get(&ptag_data[1],&avc_video_header);
+            }
         }
         else if(tag_header.TagType == TagScriptData)
         {
-
+            AMF_data_parse(ptag_data,data_size);
         }
-        fseek(pflv, data_size, SEEK_CUR);
+        next:
+        if(ptag_data)
+        {
+            free(ptag_data);
+            ptag_data = NULL;
+        }
     }while (!feof(pflv));
 
     return 0;

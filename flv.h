@@ -17,6 +17,8 @@ typedef int    int32;
 typedef short  int16;
 typedef char   int8;
 
+typedef double DOUBLE;
+
 typedef struct{
     uint8 Signature[3];
     uint8 Version;
@@ -53,21 +55,68 @@ typedef struct{
 }_audio_tag_header;
 
 int audio_header_get(unsigned char *buf, _audio_tag_header *paudio_header);
+int audio_type_parse(unsigned char *buf,uint8 SoundFormat);
+
+typedef enum{
+    VIDEO_FRAME_TYPE_KEY_FRAME = 0x01,
+    VIDEO_FRAME_TYPE_INTER_FRAME = 0x02,
+    VIDEO_FRAME_TYPE_DISPOSABLE_INTER_FRAME = 0x03,
+    VIDEO_FRAME_TYPE_GENERATED_KEY_FRAME = 0x04,
+    VIDEO_FRAME_TYPE_VIDEO_INFO_COMMAND_FRAME = 0x05,
+}_VIDEO_FRAME_TYPE_E;
+
+typedef enum{
+    VIDEO_CODEC_JPEG = 0x01,
+    VIDEO_CODEC_H263 = 0x02,
+    VIDEO_CODEC_SCREEN_VIDEO = 0x03,
+    VIDEO_CODEC_ON2_VP6 = 0x04,
+    VIDEO_CODEC_ON2_VP6_WITH_ALPHA = 0x05,
+    VIDEO_CODEC_SCREEN_VIDEO_V2 = 0x06,
+    VIDEO_CODEC_AVC = 0x07,
+}_VIDEO_CODEC_ID_E;
+
+typedef struct {
+    _VIDEO_FRAME_TYPE_E FrameType;// 4bit
+    _VIDEO_CODEC_ID_E CodecID;// 4bit
+}_video_tag_header;
+
+typedef enum {
+    AVC_SEQUENCE_HEADER = 0x00,
+    AVC_NALU = 0x01,
+    AVC_SEQUENCE_END = 0x02,
+}_AVCPacketType_E;
+
+//_VIDEO_CODEC_ID_E = 7
+typedef struct {
+    _AVCPacketType_E AVCPacketType;//1byte
+    uint32 CompositionTime;//3byte
+}_avc_video_packet_t;
+
+int video_header_get(unsigned char *buf, _video_tag_header *pvideo_header);
+int video_avc_header_get(unsigned char *buf, _avc_video_packet_t *pavc_video_header);
 
 typedef enum{
     AMF_DATA_TYPE_NUMBER = 0x00,
-    AMF_DATA_TYPE_BOOL,
-    AMF_DATA_TYPE_STRING,
-    AMF_DATA_TYPE_OBJECT,
-    AMF_DATA_TYPE_NULL,
-    AMF_DATA_TYPE_UNDEFINE,
-    AMF_DATA_TYPE_REFERENCE,
-    AMF_DATA_TYPE_MIXEDARRAY,
-    AMF_DATA_TYPE_OBJECT_END,
-    AMF_DATA_TYPE_ARRAY,
-    AMF_DATA_TYPE_DATE,
-    AMF_DATA_TYPE_LONG_STRING,
-    AMF_DATA_TYPE_UNSUPPORTED,
+    AMF_DATA_TYPE_BOOL= 0x01,
+    AMF_DATA_TYPE_STRING= 0x02,
+    AMF_DATA_TYPE_OBJECT= 0x03,
+    AMF_DATA_TYPE_MovieClip= 0x04,
+    AMF_DATA_TYPE_NULL= 0x05,
+    AMF_DATA_TYPE_UNDEFINE= 0x06,
+    AMF_DATA_TYPE_REFERENCE= 0x07,
+    AMF_DATA_TYPE_ECMA_array= 0x08,
+    AMF_DATA_TYPE_OBJECT_END= 0x09,
+    AMF_DATA_TYPE_ARRAY= 0x0A,
+    AMF_DATA_TYPE_DATE= 0x0B,
+    AMF_DATA_TYPE_LONG_STRING= 0x0C,
 }_amf_type_e;
+
+int AMF_data_parse(unsigned char *buf,uint32 max_len);
+
+typedef struct{
+    uint32 StringLength;
+    uint8 StringData;
+}SCRIPTDATASTRING;
+
 
 #endif //FLV_FLV_H

@@ -49,13 +49,28 @@ int tag_header_get(unsigned char *buf, _tag_header_t *ptag_header);
 
 typedef struct{
     uint8 SoundFormat;//4 bit
-    uint8 SoundRate;//2 bit
-    uint8 SoundSize;//1 bit
-    uint8 SoundType;//1 bit
+    uint8 SoundRate;//2 bit 0 5.5KHZ 1 11KHZ 2 22KHZ 3 44KHZ
+    uint8 SoundSize;//1 bit 0 snd8bit 1 snd16bit
+    uint8 SoundType;//1 bit 0 sndMono 1 sndStereo
 }_audio_tag_header;
 
 int audio_header_get(unsigned char *buf, _audio_tag_header *paudio_header);
-int audio_type_parse(unsigned char *buf,uint8 SoundFormat);
+
+typedef struct{
+    uint8 AACPacketType;//
+}_aac_audio_data_t;
+int aac_pkg_type_parse(unsigned char *buf,_aac_audio_data_t *paac_audio_data);
+
+//https://blog.csdn.net/jwybobo2007/article/details/9221657
+typedef struct{
+    uint32 audioObjectType;// = (0x11 & 0xF8) >> 3 <- 取前5bit，结果为2
+    uint32 samplingFrequencyIndex;// = ((0x11 & 0x7) << 1) | (0x90 >> 7)<- 取后4bit，结果为3
+    uint32 channelConfiguration;// = (0x90 >> 3) & 0x0F <- 取后4bit，结果为2
+    uint32 frameLengthFlag;// = (0x90 >> 2) & 0x01<- 取后1bit，结果为0
+    uint32 dependsOnCoreCoder;// = (0x90 >> 1) & 0x01 <- 取后1bit，结果为0
+    uint32 extensionFlag;// = 0x90 & 0x01 <- 最后1bit，结果始终为0
+}_aac_AudioSpecificConfig_t;
+int aac_AudioSpecificConfig_parse(unsigned char *buf,_aac_AudioSpecificConfig_t *pAudioSpecificConfig);
 
 typedef enum{
     VIDEO_FRAME_TYPE_KEY_FRAME = 0x01,
@@ -118,5 +133,26 @@ typedef struct{
     uint8 StringData;
 }SCRIPTDATASTRING;
 
+
+
+typedef struct{
+    uint32 syncword;//12
+    uint32 id;//1
+    uint32 layer;//2
+    uint32 protection_absent;//1
+    uint32 profile;//2
+    uint32 sampling_frequency_index;//4
+    uint32 private_bit;//1
+    uint32 channel_configuration;//3
+    uint32 original_copy;//1
+    uint32 home;//1
+    uint32 copyright_identification_bit;//1
+    uint32 copyright_identification_start;//1
+    uint32 aac_frame_length;//13
+    uint32 adts_buffer_fullness;//11
+    uint32 number_of_raw_data_blocks_in_frame;
+}_adts_header_construct_t;
+
+int adts_header_construct_to_buf(_adts_header_construct_t *pconstrcut,_audio_tag_header *paudio_header,uint8 *pbuf);
 
 #endif //FLV_FLV_H

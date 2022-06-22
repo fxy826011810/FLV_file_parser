@@ -75,26 +75,23 @@ int audio_type_print(uint8 SoundFormat)
     printf("audio type=%s\n",audiotag_str);
     return 0;
 }
-typedef struct{
-    uint8 aac_packet;//
-}_aac_audio_data_t;
-int audio_type_parse(unsigned char *buf,uint8 SoundFormat)
+
+int aac_pkg_type_parse(unsigned char *buf,_aac_audio_data_t *paac_audio_data)
 {
-    if(SoundFormat == 10)
     {
-        _aac_audio_data_t aac_audio_data = {0};
-        aac_audio_data.aac_packet = buf[0];
+        paac_audio_data->AACPacketType = buf[0];
 //        0 = AAC sequence header
 //        1 = AAC raw
-        if(aac_audio_data.aac_packet == 0)
+        if(paac_audio_data->AACPacketType == 0)
         {
             printf("aac audio type=AAC sequence header\n");
         }
-        else if(aac_audio_data.aac_packet == 1)
+        else if(paac_audio_data->AACPacketType == 1)
         {
             printf("aac audio type=AAC raw\n");
         }
     }
+    return 0;
 }
 
 int audio_header_get(unsigned char *buf, _audio_tag_header *paudio_header)
@@ -109,6 +106,17 @@ int audio_header_get(unsigned char *buf, _audio_tag_header *paudio_header)
     paudio_header->SoundType = (buf[0]>>0)&0x01;
 
     audio_type_print(paudio_header->SoundFormat);
+    return 0;
+}
+
+int aac_AudioSpecificConfig_parse(unsigned char *buf,_aac_AudioSpecificConfig_t *pAudioSpecificConfig)
+{
+    pAudioSpecificConfig->audioObjectType = (buf[0]>>3)&0x1f;
+    pAudioSpecificConfig->samplingFrequencyIndex = ((buf[0] & 0x7) << 1) | (buf[1] >> 7);
+    pAudioSpecificConfig->channelConfiguration =  (buf[1] >> 3) & 0x0F;
+    pAudioSpecificConfig->frameLengthFlag = (buf[1] >> 2) & 0x01;
+    pAudioSpecificConfig->dependsOnCoreCoder =  (buf[1] >> 1) & 0x01;
+    pAudioSpecificConfig->extensionFlag = buf[1] & 0x01;
     return 0;
 }
 
@@ -398,6 +406,31 @@ int AMF_data_parse(unsigned char *buf,uint32 max_len)
         AMF_data_printf(&buf[offset],&unit);
         offset+=unit.data_len;
     }
+    return 0;
+}
+
+int adts_header_construct_to_buf(_adts_header_construct_t *pconstrcut,_audio_tag_header *paudio_header,uint8 *pbuf)
+{
+    pbuf[0] = (pconstrcut->syncword >> 4)&0xff;
+    pbuf[1] = ((pconstrcut->syncword << 4)&0xf0)
+                |((pconstrcut->id&0x01)<<3)
+                |((pconstrcut->layer&0x03)<<1)
+                |(pconstrcut->protection_absent&0x01);
+    pbuf[2] = ((pconstrcut->profile&0x03)<<6)
+                |((pconstrcut->sampling_frequency_index&0x0f)<<2)
+                |((pconstrcut->private_bit&0x01)<<1)
+                |((pconstrcut->channel_configuration>>2)&0x01);
+    pbuf[3] = ((pconstrcut->channel_configuration&0x03)<<6)
+                |((pconstrcut->original_copy&0x01)<<5)
+                |((pconstrcut->home&0x01)<<4)
+                |((pconstrcut->copyright_identification_bit&0x01)<<3)
+                |((pconstrcut->copyright_identification_start&0x01)<<2)
+                |((pconstrcut->aac_frame_length>>11)&0x03);
+    pbuf[4] = ((pconstrcut->aac_frame_length>>3)&0xff);
+    pbuf[5] = ((pconstrcut->aac_frame_length&0x07)<<5)
+                |((pconstrcut->adts_buffer_fullness>>6)&0x1F);
+    pbuf[6] = ((pconstrcut->adts_buffer_fullness&0x3f)<<2)
+                |(pconstrcut->number_of_raw_data_blocks_in_frame&0x03);
     return 0;
 }
 

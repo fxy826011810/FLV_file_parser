@@ -107,6 +107,75 @@ typedef struct {
     uint32 CompositionTime;//3byte
 }_avc_video_packet_t;
 
+
+//aligned(8) class AVCDecoderConfigurationRecord {
+//        unsigned int(8) configurationVersion = 1;
+//        unsigned int(8) AVCProfileIndication;
+//        unsigned int(8) profile_compatibility;
+//        unsigned int(8) AVCLevelIndication;
+//        bit(6) reserved = ‘111111’b;
+//        unsigned int(2) lengthSizeMinusOne;
+//        bit(3) reserved = ‘111’b;
+//        unsigned int(5) numOfSequenceParameterSets;
+//        for (i=0; i< numOfSequenceParameterSets; i++) {
+//            unsigned int(16) sequenceParameterSetLength ;
+//            bit(8*sequenceParameterSetLength) sequenceParameterSetNALUnit;
+//        }
+//        unsigned int(8) numOfPictureParameterSets;
+//        for (i=0; i< numOfPictureParameterSets; i++) {
+//            unsigned int(16) pictureParameterSetLength;
+//            bit(8*pictureParameterSetLength) pictureParameterSetNALUnit;
+//        }
+//        if( profile_idc == 100 || profile_idc == 110 ||
+//        profile_idc == 122 || profile_idc == 144 )
+//        {
+//            bit(6) reserved = ‘111111’b;
+//            unsigned int(2) chroma_format;
+//            bit(5) reserved = ‘11111’b;
+//            unsigned int(3) bit_depth_luma_minus8;
+//            bit(5) reserved = ‘11111’b;
+//            unsigned int(3) bit_depth_chroma_minus8;
+//            unsigned int(8) numOfSequenceParameterSetExt;
+//            for (i=0; i< numOfSequenceParameterSetExt; i++) {
+//                unsigned int(16) sequenceParameterSetExtLength;
+//                bit(8*sequenceParameterSetExtLength) sequenceParameterSetExtNALUnit;
+//            }
+//        }
+//}
+
+typedef struct {
+    uint32 data_len;
+    uint8 *pdata;
+}AVC_sps_pps_unit;
+
+typedef struct{
+    uint32 unit_size;
+    AVC_sps_pps_unit **unit;
+}AVC_sps_pps_pkt;
+
+typedef AVC_sps_pps_pkt AVC_sps_pkt;
+typedef AVC_sps_pps_pkt AVC_pps_pkt;
+
+typedef struct{
+    uint32 configurationVersion;//1byte
+    uint32 AVCProfileIndication;//1byte
+    uint32 profile_compatibility;//1byte
+    uint32 AVCLevelIndication;//1byte
+    //uint8 reserved;//6bit ‘111111’b;
+    uint32 lengthSizeMinusOne;//2bit
+    //uint8 reserved//3bit = ‘111’b;
+
+    uint32 numOfSequenceParameterSets;//5bit
+    AVC_sps_pps_pkt sps_pkt;
+
+    uint32 numOfPictureParameterSets;;//5bit
+    AVC_sps_pps_pkt pps_pkt;
+
+}AVCDecoderConfigurationRecord_t;
+
+int AVCDecoderConfigurationRecord_parse(uint8 *buf,uint32 buf_len,AVCDecoderConfigurationRecord_t *pAVCDecoderConfigurationRecord);
+int AVCDecoderConfigurationRecord_free(AVCDecoderConfigurationRecord_t *pAVCDecoderConfigurationRecord);
+
 int video_header_get(unsigned char *buf, _video_tag_header *pvideo_header);
 int video_avc_header_get(unsigned char *buf, _avc_video_packet_t *pavc_video_header);
 

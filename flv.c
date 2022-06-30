@@ -3,6 +3,7 @@
 //
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 #include "flv.h"
 
 
@@ -191,6 +192,136 @@ int video_avc_header_get(unsigned char *buf, _avc_video_packet_t *pavc_video_hea
     video_avc_packet_type_print(pavc_video_header->AVCPacketType);
     return 0;
 }
+#define alloc_size(len) ((len+4)/4*4)
+
+int sps_pps_uint_free(AVC_sps_pps_unit **ppuint,uint32 unit_num)
+{
+    if(ppuint)
+    {
+        while(unit_num)
+        {
+            unit_num--;
+            if(ppuint[unit_num])
+            {
+                if(ppuint[unit_num]->pdata)
+                {
+                    free(ppuint[unit_num]->pdata);
+                    ppuint[unit_num]->pdata = NULL;
+                }
+                free(ppuint[unit_num]);
+                ppuint[unit_num] = NULL;
+            }
+        }
+        free(ppuint);
+        ppuint = NULL;
+    }
+    return 0;
+}
+
+int sps_pps_pkt_free(AVC_sps_pps_pkt *pptk)
+{
+    return sps_pps_uint_free(pptk->unit,pptk->unit_size);
+}
+
+int sps_pps_parse(unsigned char *buf,AVC_sps_pps_unit ***pppunit,uint32 unit_num,uint32 *preturn_len)
+{
+    uint32 offset = 0;
+    AVC_sps_pps_unit **ppuint = malloc(
+            sizeof(AVC_sps_pps_unit *)
+            *alloc_size(unit_num));
+    if(ppuint == NULL)
+    {
+        goto error;
+    }
+    uint8 *punit_data_ptr = buf;
+    uint8 *pdata_ptr = NULL;
+    uint32 pindex = 0;
+    for(pindex = 0;pindex < unit_num ; pindex++)
+    {
+        uint32 dataLength = (punit_data_ptr[0]<<8)|(punit_data_ptr[1]);
+        uint8 *dataPtr = malloc(alloc_size(dataLength));
+        pdata_ptr = &punit_data_ptr[2];
+        if(dataPtr == NULL)
+        {
+            goto error;
+        }
+        memset(dataPtr,0,alloc_size(dataLength));
+        ppuint[pindex] = malloc(alloc_size(sizeof(AVC_sps_pps_unit)));
+        if(ppuint[pindex] == NULL)
+        {
+            goto error;
+        }
+        memset(ppuint[pindex],0,alloc_size(sizeof(AVC_sps_pps_unit)));
+
+        memset(dataPtr,0,alloc_size(dataLength));
+        memcpy(dataPtr,pdata_ptr,dataLength);
+        ppuint[pindex]->data_len = dataLength;
+        ppuint[pindex]->pdata = dataPtr;
+
+        punit_data_ptr += 2 + dataLength;
+        offset += 2 + dataLength;
+    }
+    (*pppunit) = ppuint;
+    (*preturn_len) = offset;
+    return 0;
+    error:
+    sps_pps_uint_free(ppuint,unit_num);
+    return -1;
+}
+
+int AVCDecoderConfigurationRecord_parse(uint8 *buf,uint32 buf_len,AVCDecoderConfigurationRecord_t *pAVCDecoderConfigurationRecord)
+{
+    AVCDecoderConfigurationRecord_t tmp = {0};
+    tmp.configurationVersion = buf[0];//1byte
+    tmp.AVCProfileIndication = buf[1];//1byte
+    tmp.profile_compatibility = buf[2];//1byte
+    tmp.AVCLevelIndication = buf[3];//1byte
+    //tmp.reserved;//6bit ‘111111’b;
+    tmp.lengthSizeMinusOne = buf[4]&0x03;//2bit
+    //tmp.reserved//3bit = ‘111’b;
+    tmp.numOfSequenceParameterSets = buf[5]&0x1f;//5bit
+
+    AVC_sps_pkt ppsps_pkt = {0};
+    uint32 sps_offset_len = 0;
+
+    ppsps_pkt.unit_size = tmp.numOfSequenceParameterSets;
+    if(sps_pps_parse(&buf[6]
+                     ,&ppsps_pkt.unit
+                     ,ppsps_pkt.unit_size
+                     ,&sps_offset_len) == -1)
+    {
+        goto error;
+    }
+    tmp.sps_pkt = ppsps_pkt;
+    tmp.numOfPictureParameterSets = buf[6 + sps_offset_len]&0x1f;//5bit
+
+    AVC_pps_pkt pppps_pkt = {0};
+    uint32 pps_offset_len = 0;
+
+    pppps_pkt.unit_size = tmp.numOfPictureParameterSets;
+    if(sps_pps_parse(&buf[6 + sps_offset_len + 1]
+                     ,&pppps_pkt.unit
+                     ,pppps_pkt.unit_size
+                     ,&pps_offset_len) == -1)
+    {
+        goto error;
+    }
+    tmp.pps_pkt = pppps_pkt;
+    memcpy(pAVCDecoderConfigurationRecord,&tmp,sizeof(AVCDecoderConfigurationRecord_t));
+    return 0;
+    error:
+    memset(pAVCDecoderConfigurationRecord,0,sizeof(AVCDecoderConfigurationRecord_t));
+    return -1;
+}
+
+int AVCDecoderConfigurationRecord_free(AVCDecoderConfigurationRecord_t *pAVCDecoderConfigurationRecord)
+{
+    sps_pps_pkt_free(&pAVCDecoderConfigurationRecord->sps_pkt);
+    sps_pps_pkt_free(&pAVCDecoderConfigurationRecord->pps_pkt);
+    memset(pAVCDecoderConfigurationRecord,0,sizeof(AVCDecoderConfigurationRecord_t));
+    return 0;
+}
+
 
 void AMP_STRING_LEN(uint8 *pbuf,uint32 *plen){
     (*plen) += (pbuf[0]<<8)|(pbuf[1]<<0);
@@ -238,18 +369,18 @@ uint32 AMF_data_printf(unsigned char *buf,_amf_data_unit_t *punit)
             str[5] = buf[2];
             str[6] = buf[1];
             str[7] = buf[0];
-            printf("num=%f\n",*(DOUBLE *)str);
+            printf("AMF_DATA_TYPE_NUMBER=%f\n",*(DOUBLE *)str);
             break;
         }
         case AMF_DATA_TYPE_BOOL:{
             memcpy(str,buf,punit->data_len);
-            printf("bool=%d\n",*(uint8 *)str);
+            printf("AMF_DATA_TYPE_BOOL=%d\n",*(uint8 *)str);
             break;
         }
         case AMF_DATA_TYPE_STRING:{
             uint32 StringLength = (buf[0]<<8)|(buf[1]<<0);
             memcpy(str,&buf[2],StringLength);
-            printf("datal_string=%s\n",str);
+            printf("AMF_DATA_TYPE_STRING=%s\n",str);
             break;
         }
         case AMF_DATA_TYPE_OBJECT:{

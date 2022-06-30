@@ -3,8 +3,25 @@
 #include <stdlib.h>
 #include "flv.h"
 
+int file_create(FILE **ppfile,uint8 *pfile_name)
+{
+    if((*ppfile) == NULL)
+    {
+        (*ppfile) = fopen(pfile_name/*"video.h264"*/,"wb+");
+    }
+    return 0;
+}
+int video_file_create(FILE **pfile)
+{
+    return file_create(pfile,"video.h264");
+}
+int audio_file_create(FILE **pfile)
+{
+    return file_create(pfile,"audio.aac");
+}
 #define FLV_FILE "D:\\\\flv\\461480359_nb2-1-120.flv"
-
+//https://blog.csdn.net/weixin_43937576/article/details/111033402
+//https://blog.csdn.net/abcd1f2/article/details/82189186
 int main() {
 
     FILE *paudio_file = NULL;
@@ -32,6 +49,8 @@ int main() {
     fseek(pflv, flv_header.DataOffset, SEEK_SET);
 
     uint8 PreviousTagSize[4] = {0};
+
+    static AVCDecoderConfigurationRecord_t AVCDecoderConfigurationRecord = {0};
 
     _tag_header_t tag_header = {0};
     unsigned int read_len = 0;
@@ -82,10 +101,11 @@ int main() {
                         aac_AudioSpecificConfig_parse(&ptag_data[2],&AudioSpecificConfig);
                         continue;
                     }
-                    if(paudio_file == NULL)
-                    {
-                        paudio_file = fopen("audio.aac","wb+");
-                    }
+//                    if(paudio_file == NULL)
+//                    {
+//                        paudio_file = fopen("audio.aac","wb+");
+//                    }
+                    audio_file_create(&paudio_file);
                     if(paudio_file)
                     {
                         //https://blog.csdn.net/weixin_40732273/article/details/109458777
@@ -126,6 +146,78 @@ int main() {
             {
                 _avc_video_packet_t avc_video_header={0};
                 video_avc_header_get(&ptag_data[1],&avc_video_header);
+                if(avc_video_header.AVCPacketType == 1)
+                {
+                    video_file_create(&pvideo_file);
+                    if(pvideo_file)
+                    {
+//                        https://blog.csdn.net/sunxiaopengsun/article/details/80824506?utm_medium=distribute.pc_relevant.none-task-blog-2~default~baidujs_title~default-0-80824506-blog-80723959.pc_relevant_multi_platform_whitelistv1&spm=1001.2101.3001.4242.1&utm_relevant_index=3
+                        uint32 nalu_len = 0;
+                        uint8 *pnalu = &ptag_data[5];
+                        do{
+                            uint8 h264_nalu_header[8] = {0};
+                            uint32 h264_nalu_header_len = 0;
+                            uint32 nalu_type = 0;
+                            nalu_len = (pnalu[0]<<24)|(pnalu[1]<<16)|(pnalu[2]<<8)|(pnalu[3]);
+                            nalu_type = pnalu[4];
+                            if(0x65 == nalu_type)
+                            {
+                                {
+
+                                    h264_nalu_header[3] = 0x01;
+                                    h264_nalu_header_len = 4;
+                                    fwrite(h264_nalu_header,1,h264_nalu_header_len ,pvideo_file);
+                                    h264_nalu_header[3] = 0x00;
+
+                                    int index = 0;
+                                    for(index = 0;index<AVCDecoderConfigurationRecord.sps_pkt.unit_size;index++)
+                                    {
+                                        AVC_sps_pps_unit *puint = AVCDecoderConfigurationRecord.sps_pkt.unit[index];
+                                        fwrite(puint->pdata,1,puint->data_len ,pvideo_file);
+                                    }
+
+                                    h264_nalu_header[3] = 0x01;
+                                    h264_nalu_header_len = 4;
+                                    fwrite(h264_nalu_header,1,h264_nalu_header_len ,pvideo_file);
+        //                            h264_nalu_header[3] = 0x00;
+
+                                    for(index = 0;index<AVCDecoderConfigurationRecord.pps_pkt.unit_size;index++)
+                                    {
+                                        AVC_sps_pps_unit *puint = AVCDecoderConfigurationRecord.pps_pkt.unit[index];
+                                        fwrite(puint->pdata,1,puint->data_len ,pvideo_file);
+                                    }
+                                }
+                            }
+
+
+                            if(h264_nalu_header[2] || h264_nalu_header[3])
+                            {
+                                h264_nalu_header[3] = 0x00;
+                                h264_nalu_header[2] = 0x01;
+                                h264_nalu_header_len = 3;
+                            }
+                            else
+                            {
+                                h264_nalu_header[3] = 0x01;
+                                h264_nalu_header_len = 4;
+                            }
+                            fwrite(h264_nalu_header,1,h264_nalu_header_len ,pvideo_file);
+
+
+                            fwrite(&pnalu[4],1,nalu_len,pvideo_file);
+                            pnalu += 4 + nalu_len;
+                        } while (pnalu<&ptag_data[data_size-1]);
+                    }
+                }
+                else
+                {
+                    if(AVCDecoderConfigurationRecord.sps_pkt.unit == NULL && AVCDecoderConfigurationRecord.pps_pkt.unit == NULL)
+                    {
+                        if(AVCDecoderConfigurationRecord_parse(&ptag_data[5],data_size-5,&AVCDecoderConfigurationRecord) == 0)
+                        {
+                        }
+                    }
+                }
             }
         }
         else if(tag_header.TagType == TagScriptData)
@@ -145,5 +237,12 @@ int main() {
         fclose(paudio_file);
         paudio_file = NULL;
     }
+
+    if(pvideo_file)
+    {
+        fclose(pvideo_file);
+        pvideo_file = NULL;
+    }
+    AVCDecoderConfigurationRecord_free(&AVCDecoderConfigurationRecord);
     return 0;
 }
